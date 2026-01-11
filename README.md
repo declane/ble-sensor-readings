@@ -4,4 +4,9 @@ This project was created to explore the NRF Connect SDK. A [nRF52832-DK](https:/
 ## IMU Communication
 The nRF52-DK communicates with the IMU over I2C. Acceleromter and gyroscope readings are triggered by a rising edge of the `INT` pin on the IMU breakout board. Below is an oscilloscope screenshot of this happening. The purple signal is the `Int` line, and the yellow signal is the `SDA` line of the I2C.
 
-![data transfer image](./documenation/trigger_data_transfer.png)
+![data transfer image](documentation/trigger_data_transfer.png)
+
+The MPU6050 is set to be sampled at 100 Hz. To verify this, there is another screenshot below showing that the purple signal has a rising edge every ~10 milliseconds.
+
+![data transfer image](documentation/mpu_ready_frequency.png)
+
