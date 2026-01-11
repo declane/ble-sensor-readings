@@ -10,3 +10,8 @@ The MPU6050 is set to be sampled at 100 Hz. To verify this, there is another scr
 
 ![data transfer image](documentation/mpu_ready_frequency.png)
 
+## BLE Connectivity
+
+This application acts as a BLE peripheral device. It is possible to connect to it using the NRF Connect smart phone app. It uses the Nordic Uart Service to send the raw accelerometer data as a CSV string like so: `Ax,Ay,Az`. For testing, this was sent once every 500 samples or once every 5 seconds. Below is a screenshot of the data coming in on the app. The transmitted data is in next to `Value` in the `UART TX Characteristic` section.
+
+![NRF Connect App](documentation/IMU_data_ble.PNG)
