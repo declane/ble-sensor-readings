@@ -7,6 +7,10 @@
 /** @file
  *  @brief Nordic UART Bridge Service (NUS) sample
  */
+
+#include "ble_manager.h"
+#include "gy_521.h"
+
 #include <uart_async_adapter.h>
 
 #include <zephyr/types.h>
@@ -56,10 +60,8 @@ LOG_MODULE_REGISTER(LOG_MODULE_NAME);
 #define UART_WAIT_FOR_RX CONFIG_BT_NUS_UART_RX_WAIT_TIME
 
 static K_SEM_DEFINE(ble_init_ok, 0, 1);
-
-static struct bt_conn *current_conn;
-static struct bt_conn *auth_conn;
-static struct k_work adv_work;
+static K_FIFO_DEFINE(imu_fifo);
+K_SEM_DEFINE(imu_status_sem, 1, 1);
 
 static const struct device *uart = DEVICE_DT_GET(DT_CHOSEN(nordic_nus_uart));
 static struct k_work_delayable uart_work;
@@ -72,15 +74,6 @@ struct uart_data_t {
 
 static K_FIFO_DEFINE(fifo_uart_tx_data);
 static K_FIFO_DEFINE(fifo_uart_rx_data);
-
-static const struct bt_data ad[] = {
-	BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
-	BT_DATA(BT_DATA_NAME_COMPLETE, DEVICE_NAME, DEVICE_NAME_LEN),
-};
-
-static const struct bt_data sd[] = {
-	BT_DATA_BYTES(BT_DATA_UUID128_ALL, BT_UUID_NUS_VAL),
-};
 
 #ifdef CONFIG_UART_ASYNC_ADAPTER
 UART_ASYNC_ADAPTER_INST_DEFINE(async_adapter);
@@ -334,165 +327,6 @@ static int uart_init(void)
 	return err;
 }
 
-static void adv_work_handler(struct k_work *work)
-{
-	int err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_2, ad, ARRAY_SIZE(ad), sd, ARRAY_SIZE(sd));
-
-	if (err) {
-		LOG_ERR("Advertising failed to start (err %d)", err);
-		return;
-	}
-
-	LOG_INF("Advertising successfully started");
-}
-
-static void advertising_start(void)
-{
-	k_work_submit(&adv_work);
-}
-
-static void connected(struct bt_conn *conn, uint8_t err)
-{
-	char addr[BT_ADDR_LE_STR_LEN];
-
-	if (err) {
-		LOG_ERR("Connection failed, err 0x%02x %s", err, bt_hci_err_to_str(err));
-		return;
-	}
-
-	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
-	LOG_INF("Connected %s", addr);
-
-	current_conn = bt_conn_ref(conn);
-
-	dk_set_led_on(CON_STATUS_LED);
-}
-
-static void disconnected(struct bt_conn *conn, uint8_t reason)
-{
-	char addr[BT_ADDR_LE_STR_LEN];
-
-	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
-
-	LOG_INF("Disconnected: %s, reason 0x%02x %s", addr, reason, bt_hci_err_to_str(reason));
-
-	if (auth_conn) {
-		bt_conn_unref(auth_conn);
-		auth_conn = NULL;
-	}
-
-	if (current_conn) {
-		bt_conn_unref(current_conn);
-		current_conn = NULL;
-		dk_set_led_off(CON_STATUS_LED);
-	}
-}
-
-static void recycled_cb(void)
-{
-	LOG_INF("Connection object available from previous conn. Disconnect is complete!");
-	advertising_start();
-}
-
-#ifdef CONFIG_BT_NUS_SECURITY_ENABLED
-static void security_changed(struct bt_conn *conn, bt_security_t level,
-			     enum bt_security_err err)
-{
-	char addr[BT_ADDR_LE_STR_LEN];
-
-	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
-
-	if (!err) {
-		LOG_INF("Security changed: %s level %u", addr, level);
-	} else {
-		LOG_WRN("Security failed: %s level %u err %d %s", addr, level, err,
-			bt_security_err_to_str(err));
-	}
-}
-#endif
-
-BT_CONN_CB_DEFINE(conn_callbacks) = {
-	.connected        = connected,
-	.disconnected     = disconnected,
-	.recycled         = recycled_cb,
-#ifdef CONFIG_BT_NUS_SECURITY_ENABLED
-	.security_changed = security_changed,
-#endif
-};
-
-#if defined(CONFIG_BT_NUS_SECURITY_ENABLED)
-static void auth_passkey_display(struct bt_conn *conn, unsigned int passkey)
-{
-	char addr[BT_ADDR_LE_STR_LEN];
-
-	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
-
-	LOG_INF("Passkey for %s: %06u", addr, passkey);
-}
-
-static void auth_passkey_confirm(struct bt_conn *conn, unsigned int passkey)
-{
-	char addr[BT_ADDR_LE_STR_LEN];
-
-	auth_conn = bt_conn_ref(conn);
-
-	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
-
-	LOG_INF("Passkey for %s: %06u", addr, passkey);
-
-	if (IS_ENABLED(CONFIG_SOC_SERIES_NRF54HX) || IS_ENABLED(CONFIG_SOC_SERIES_NRF54LX)) {
-		LOG_INF("Press Button 0 to confirm, Button 1 to reject.");
-	} else {
-		LOG_INF("Press Button 1 to confirm, Button 2 to reject.");
-	}
-}
-
-
-static void auth_cancel(struct bt_conn *conn)
-{
-	char addr[BT_ADDR_LE_STR_LEN];
-
-	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
-
-	LOG_INF("Pairing cancelled: %s", addr);
-}
-
-
-static void pairing_complete(struct bt_conn *conn, bool bonded)
-{
-	char addr[BT_ADDR_LE_STR_LEN];
-
-	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
-
-	LOG_INF("Pairing completed: %s, bonded: %d", addr, bonded);
-}
-
-
-static void pairing_failed(struct bt_conn *conn, enum bt_security_err reason)
-{
-	char addr[BT_ADDR_LE_STR_LEN];
-
-	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
-
-	LOG_INF("Pairing failed conn: %s, reason %d %s", addr, reason,
-		bt_security_err_to_str(reason));
-}
-
-static struct bt_conn_auth_cb conn_auth_callbacks = {
-	.passkey_display = auth_passkey_display,
-	.passkey_confirm = auth_passkey_confirm,
-	.cancel = auth_cancel,
-};
-
-static struct bt_conn_auth_info_cb conn_auth_info_callbacks = {
-	.pairing_complete = pairing_complete,
-	.pairing_failed = pairing_failed
-};
-#else
-static struct bt_conn_auth_cb conn_auth_callbacks;
-static struct bt_conn_auth_info_cb conn_auth_info_callbacks;
-#endif
-
 static void bt_receive_cb(struct bt_conn *conn, const uint8_t *const data,
 			  uint16_t len)
 {
@@ -554,25 +388,12 @@ void error(void)
 }
 
 #ifdef CONFIG_BT_NUS_SECURITY_ENABLED
-static void num_comp_reply(bool accept)
-{
-	if (accept) {
-		bt_conn_auth_passkey_confirm(auth_conn);
-		LOG_INF("Numeric Match, conn %p", (void *)auth_conn);
-	} else {
-		bt_conn_auth_cancel(auth_conn);
-		LOG_INF("Numeric Reject, conn %p", (void *)auth_conn);
-	}
-
-	bt_conn_unref(auth_conn);
-	auth_conn = NULL;
-}
 
 void button_changed(uint32_t button_state, uint32_t has_changed)
 {
 	uint32_t buttons = button_state & has_changed;
 
-	if (auth_conn) {
+	if (authorized_conn_exists()) {
 		if (buttons & KEY_PASSKEY_ACCEPT) {
 			num_comp_reply(true);
 		}
@@ -613,26 +434,13 @@ int main(void)
 		error();
 	}
 
-	if (IS_ENABLED(CONFIG_BT_NUS_SECURITY_ENABLED)) {
-		err = bt_conn_auth_cb_register(&conn_auth_callbacks);
-		if (err) {
-			LOG_ERR("Failed to register authorization callbacks. (err: %d)", err);
-			return 0;
-		}
-
-		err = bt_conn_auth_info_cb_register(&conn_auth_info_callbacks);
-		if (err) {
-			LOG_ERR("Failed to register authorization info callbacks. (err: %d)", err);
-			return 0;
-		}
-	}
+	if(register_bt_cbs())
+	{	return 0; }
 
 	err = bt_enable(NULL);
 	if (err) {
 		error();
 	}
-
-	LOG_INF("Bluetooth initialized");
 
 	k_sem_give(&ble_init_ok);
 
@@ -646,7 +454,6 @@ int main(void)
 		return 0;
 	}
 
-	k_work_init(&adv_work, adv_work_handler);
 	advertising_start();
 
 	for (;;) {
@@ -654,6 +461,80 @@ int main(void)
 		k_sleep(K_MSEC(RUN_LED_BLINK_INTERVAL));
 	}
 }
+
+static void mpu_data_rdy(const struct device *gpiob, struct gpio_callback *cb, gpio_port_pins_t pins)
+{
+	k_sem_give(&imu_status_sem);
+}
+
+void imu_read(void)
+{
+	int err = 0;
+	MPU_conf_t imu_config_params;
+
+	imu_config_params.accel_setting = MPU6050_Accelerometer_8G;
+	imu_config_params.gyro_setting = MPU6050_Gyroscope_1000_deg;
+	imu_config_params.sampling_rate = MPU6050_DataRate_100Hz;
+
+    err = init_MPU6050(&imu_config_params, mpu_data_rdy);
+	if(err){
+		LOG_ERR("mpu6050_setup failed. returned: %d", err);
+	}
+
+	MPU6050_t imu_data;
+	imu_data.Accel_X_RAW = 0; imu_data.Accel_Y_RAW = 0; imu_data.Accel_Z_RAW = 0;
+	imu_data.Gyro_X_RAW = 0; imu_data.Gyro_Y_RAW = 0; imu_data.Gyro_Z_RAW = 0;
+    
+	size_t size;
+	struct uart_data_t* mem_ptr;
+
+	char imuAccelStr[75], imuGyroStr[75], imuBleData[40];
+	struct uart_data_t uartBuf = { 0 };
+	int bleDataSize;//, plen, loc;
+
+	uint32_t counter = 0;
+
+	printk("Entering imu thread while loop.\n");
+
+	while(1)
+	{
+		
+		k_sem_take(&imu_status_sem, K_FOREVER);
+
+		counter++;
+
+		MPU_read_all_data(&imu_data);
+		if( (counter % 500) == 0)
+		{
+			counter = 0;
+
+			snprintf(imuAccelStr, 75, "Accel Measurements: Ax = %d | Ay = %d | Az = %d", imu_data.Accel_X_RAW, imu_data.Accel_Y_RAW, imu_data.Accel_Z_RAW);
+			snprintf(imuGyroStr, 75,  "Gyro  Measurements: Gx = %d | Gy = %d | Gz = %d", imu_data.Gyro_X_RAW, imu_data.Gyro_Y_RAW, imu_data.Gyro_Z_RAW);
+			bleDataSize = snprintf(imuBleData, 40, "%d,%d,%d\r\n", imu_data.Accel_X_RAW, imu_data.Accel_Y_RAW, imu_data.Accel_Z_RAW);
+
+			memcpy(uartBuf.data, imuBleData, bleDataSize);
+			uartBuf.len = bleDataSize;
+
+			LOG_INF("%s", imuAccelStr);
+			LOG_INF("%s", imuGyroStr);
+			LOG_INF("Str sending over BLE: %s", uartBuf.data);
+
+			size = sizeof(uartBuf);
+			mem_ptr = k_malloc(size);
+
+			//__ASSERT_NO_MSG(mem_ptr != 0);
+
+			memcpy(mem_ptr, &uartBuf, size);
+			k_fifo_put(&fifo_uart_rx_data, mem_ptr);
+		}
+
+		
+		
+	}
+}
+K_THREAD_DEFINE(sensor_read_id, STACKSIZE, imu_read, NULL, NULL, NULL, PRIORITY, 0, 0);	
+
+
 
 void ble_write_thread(void)
 {
@@ -665,11 +546,12 @@ void ble_write_thread(void)
 
 	for (;;) {
 		/* Wait indefinitely for data to be sent over bluetooth */
-		struct uart_data_t *buf = k_fifo_get(&fifo_uart_rx_data,
-						     K_FOREVER);
-
+		struct uart_data_t* buf = (struct uart_data_t*) k_fifo_get(&fifo_uart_rx_data, K_FOREVER);
+		
 		int plen = MIN(sizeof(nus_data.data) - nus_data.len, buf->len);
 		int loc = 0;
+
+		LOG_INF("Recieved data to send over BLE: %s", buf->data);
 
 		while (plen > 0) {
 			memcpy(&nus_data.data[nus_data.len], &buf->data[loc], plen);
@@ -691,6 +573,7 @@ void ble_write_thread(void)
 		k_free(buf);
 	}
 }
+
 
 K_THREAD_DEFINE(ble_write_thread_id, STACKSIZE, ble_write_thread, NULL, NULL,
 		NULL, PRIORITY, 0, 0);

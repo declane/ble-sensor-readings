@@ -8,4 +8,21 @@
 	chosen {
 		nordic,nus-uart = &uart0;
 	};
+
+    input_pins {
+		compatible = "gpio-keys";
+    	imu_ready_pin: imu_ready_pin_0 {
+			gpios = <&gpio0 2 (GPIO_PULL_UP | GPIO_ACTIVE_HIGH)>; // Pin 2, pull-up, active low
+			label = "My Button";
+    	};
+	};
 };
+
+&i2c0 {
+	imu_sensor: imu@68 {
+		compatible = "i2c-device";
+		reg = <0x68>;
+		status = "okay";
+	};
+};
+
