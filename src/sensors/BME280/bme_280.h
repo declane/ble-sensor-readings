@@ -1,6 +1,8 @@
 #ifndef BME_280_H
 #define BME_280_H
 
+#include "stdint.h"
+
 /* 
 Burst reads of all the data is recommended for several reasons:
 1.  Fastest even if pressure for example is not being sampled.
@@ -48,8 +50,21 @@ typedef struct {
     BmeSamplingSelection_e humiditySamplingSelection;
     BmeSamplingSelection_e pressureSamplingSelection;
     BmeSamplingSelection_e temperatureSamplingSelection;
+    BmeStandByTime_e standByTime;
     BmeIIR_FilterCoefficient_e filterCoefficient;
 } BmeConfig_s;
+
+int32_t bme280_setup_device(BmeConfig_s* config);
+
+int32_t bme280_set_mode(BmeMode_e mode);
+
+int32_t bme280_read_sensor_sync(void);
+
+int32_t bme280_get_humidity(void);
+
+int32_t bme280_get_pressure(void);
+
+int32_t bme280_get_temperature(void);
 
 
 #endif // BME_280_H
