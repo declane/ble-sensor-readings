@@ -60,6 +60,8 @@ int32_t bme280_set_mode(BmeMode_e mode);
 
 int32_t bme280_read_sensor_sync(void);
 
+int32_t bme280_read_calibration_sync(void);
+
 int32_t bme280_get_humidity(void);
 
 int32_t bme280_get_pressure(void);
