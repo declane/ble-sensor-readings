@@ -77,6 +77,7 @@ int32_t bme280_read_calibration_sync(void)
     dig_H6 = raw_calibration_data[31];
 }
 
+// divide return value by 1024 to get releative humidity (RH)
 int32_t bme280_get_humidity(void)
 {
     int32_t v_x1_u32r, adc_H;
@@ -91,6 +92,7 @@ int32_t bme280_get_humidity(void)
     return (int32_t)(v_x1_u32r>>12);
 }
 
+// divide return value by 256 to get hPa
 int32_t bme280_get_pressure(void)
 {
     int32_t adc_P;
@@ -115,6 +117,7 @@ int32_t bme280_get_pressure(void)
     return (uint32_t)p;
 }
 
+// divide by 100 to get degrees celsius
 int32_t bme280_get_temperature(void)
 {
     int32_t var1, var2, T, adc_T;
