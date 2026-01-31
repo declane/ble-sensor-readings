@@ -1,5 +1,8 @@
 #include "bme_280.h"
 #include "bme_280_config.h"
+#include "../sensor_io/sensor_io.h"
+
+const static Sensor_IO_Descriptor_s* io_descriptor;
 
 static uint8_t ctrl_meas_reg;
 static uint8_t raw_sensor_data[BME280_DATA_BYTE_COUNT] = {0};
@@ -15,6 +18,15 @@ static int32_t t_fine;
 
 int32_t bme280_setup_device(BmeConfig_s* config)
 {
+    int err;
+    
+    io_descriptor = get_bme_descriptor();
+    err = io_descriptor->config(io_descriptor->driver_handle);
+    if(err == SENSOR_IO_CONFIG_ERROR)
+    {
+        return 1;
+    }
+    
     // CHANGES TO HUMIDITY CONTROL (ctrl_hum) ONLY BECOME EFFECTIVE
     // AFTER A WRITE TO MEASURE CONTROL (ctrl_meas)
     uint8_t ctrl_humidity_reg = 0;
@@ -30,6 +42,10 @@ int32_t bme280_setup_device(BmeConfig_s* config)
                  (uint8_t)((uint8_t)config->standByTime << 5);
 
     // write bytes to designated registers.
+    io_descriptor->write_byte(io_descriptor->driver_handle, BME280_I2C_ADDR_DEF, BME280_REG_CTRL_HUM, ctrl_humidity_reg);
+    io_descriptor->write_byte(io_descriptor->driver_handle, BME280_I2C_ADDR_DEF, BME280_REG_CTRL_MEAS, ctrl_meas_reg);
+    io_descriptor->write_byte(io_descriptor->driver_handle, BME280_I2C_ADDR_DEF, BME280_REG_CONFIG, config_reg);
+
     return 0;
 }
 
@@ -39,6 +55,7 @@ int32_t bme280_set_mode(BmeMode_e mode)
     ctrl_meas_reg |= (uint8_t)mode & 0x03;
     
     // write byte.
+    io_descriptor->write_byte(io_descriptor->driver_handle, BME280_I2C_ADDR_DEF, BME280_REG_CTRL_MEAS, ctrl_meas_reg);
 
     return 0;
 }
@@ -46,11 +63,24 @@ int32_t bme280_set_mode(BmeMode_e mode)
 int32_t bme280_read_sensor_sync(void)
 {
     // read bytes into buffer
+    io_descriptor->read_array(io_descriptor->driver_handle, BME280_I2C_ADDR_DEF, BME280_DATA_START_ADDR, raw_sensor_data, BME280_DATA_BYTE_COUNT);
+    return 0;
 }
 
 int32_t bme280_read_calibration_sync(void)
 {
     // read calibration into buffer.
+    io_descriptor->read_array(  io_descriptor->driver_handle, 
+                                BME280_I2C_ADDR_DEF, 
+                                BME280_CAL_00_25_START_ADDR, 
+                                raw_calibration_data, 
+                                BME280_CAL_00_25_LENGTH);
+
+    io_descriptor->read_array(  io_descriptor->driver_handle, 
+                                BME280_I2C_ADDR_DEF, 
+                                BME280_CAL_26_41_START_ADDR, 
+                                (raw_calibration_data + BME280_CAL_00_25_LENGTH), 
+                                BME280_CAL_26_41_LENGTH);
 
     dig_T1 = (raw_calibration_data[0] << 8)  | raw_calibration_data[1];
     dig_T2 = (raw_calibration_data[2] << 8)  | raw_calibration_data[3];
@@ -75,12 +105,16 @@ int32_t bme280_read_calibration_sync(void)
     dig_H5 = ( ((raw_calibration_data[29] & 0xF0) >> 4) << 8) | (raw_calibration_data[30] & 0xF);
 
     dig_H6 = raw_calibration_data[31];
+
+    return 0;
 }
 
 // divide return value by 1024 to get releative humidity (RH)
 int32_t bme280_get_humidity(void)
 {
     int32_t v_x1_u32r, adc_H;
+    adc_H =   (int32_t)(raw_sensor_data[7]) |  // BME280_REG_PRESS_XLSB
+            ( (int32_t)(raw_sensor_data[6]) << 8);       // BME280_REG_PRESS_LSB
     v_x1_u32r = (t_fine - ((int32_t)76800));
 
     v_x1_u32r = (((((adc_H << 14) - (((int32_t)dig_H4) << 20) - (((int32_t)dig_H5) * v_x1_u32r)) + ((int32_t)16384)) >> 15) * (((((((v_x1_u32r *
@@ -95,7 +129,9 @@ int32_t bme280_get_humidity(void)
 // divide return value by 256 to get hPa
 int32_t bme280_get_pressure(void)
 {
-    int32_t adc_P;
+    int32_t adc_P = ( (int32_t)(raw_sensor_data[2] & 0xF0) >> 4) |  // BME280_REG_PRESS_XLSB
+                    ( (int32_t)(raw_sensor_data[1]) << 4) |         // BME280_REG_PRESS_LSB
+                    ( (int32_t)(raw_sensor_data[0]) << 12);         // BME280_REG_PRESS_MSB;
     int64_t var1, var2, p;
     var1 = ((int64_t)t_fine) - 128000;
     var2 = var1 * var1 * (int64_t)dig_P6;
@@ -121,9 +157,9 @@ int32_t bme280_get_pressure(void)
 int32_t bme280_get_temperature(void)
 {
     int32_t var1, var2, T, adc_T;
-    adc_T = ( (int32_t)(raw_sensor_data[BME280_REG_TEMP_XLSB] & 0xF0) >> 4) | 
-            ( (int32_t)(raw_sensor_data[BME280_REG_TEMP_LSB]) << 4) | 
-            ( (int32_t)(raw_sensor_data[BME280_REG_TEMP_MSB]) << 12);
+    adc_T = ( (int32_t)(raw_sensor_data[5] & 0xF0) >> 4) |  // BME280_REG_TEMP_XLSB
+            ( (int32_t)(raw_sensor_data[4]) << 4) |         // BME280_REG_TEMP_LSB
+            ( (int32_t)(raw_sensor_data[3]) << 12);         // BME280_REG_TEMP_MSB
     var1 = ((((adc_T>>3) - ((int32_t)dig_T1<<1))) * ((int32_t)dig_T2)) >> 11;
     var2 = (((((adc_T>>4) - ((int32_t)dig_T1)) * ((adc_T>>4) - ((int32_t)dig_T1))) >> 12) *((int32_t)dig_T3)) >> 14;
     t_fine = var1 + var2;
