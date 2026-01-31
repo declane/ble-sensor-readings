@@ -3,6 +3,9 @@
 
 #include "stdint.h"
 
+#define SENSOR_IO_SUCCESS       0
+#define SENSOR_IO_CONFIG_ERROR  1
+
 /**
  * @brief Sensor Configuration
  * @details
@@ -68,11 +71,15 @@ typedef int (*SensorReadByte_fp)(void*,uint16_t,uint8_t,uint8_t*);
 typedef int (*SensorReadArr_fp)(void*,uint16_t,uint8_t,uint8_t*,uint32_t);
 
 typedef struct {
+    void* driver_handle;
     SensorConfig_fp config;
     SensorWriteByte_fp write_byte;
     SensorWriteArr_fp write_array;
     SensorReadByte_fp read_byte;
     SensorReadArr_fp read_array;
 } Sensor_IO_Descriptor_s;
+
+const Sensor_IO_Descriptor_s* get_mpu_descriptor(void);
+const Sensor_IO_Descriptor_s* get_bme_descriptor(void);
 
 #endif // SENSOR_IO_H
