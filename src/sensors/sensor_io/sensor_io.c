@@ -16,7 +16,7 @@ static int i2c_zephyr_read_arr_wrapper(void* driver,uint16_t i2cAddr, uint8_t re
 
 
 static const Sensor_IO_Descriptor_s sensor_descriptor =    { 
-                                                                //.driver_handle = (void*)i2c_spec.bus,
+                                                                .driver_handle = (void*)i2c_spec.bus,
                                                                 .config = &zephyr_i2c_config,
                                                                 .write_byte = &i2c_zephyr_write_byte_wrapper,
                                                                 .write_array = &i2c_zephyr_write_arr_wrapper,
