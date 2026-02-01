@@ -126,6 +126,11 @@ int32_t bme280_get_humidity(void)
     return (int32_t)(v_x1_u32r>>12);
 }
 
+int32_t bme280_get_humidity_relHum(void)
+{
+    return bme280_get_humidity()/1024;
+}
+
 // divide return value by 256 to get hPa
 int32_t bme280_get_pressure(void)
 {
@@ -153,6 +158,11 @@ int32_t bme280_get_pressure(void)
     return (uint32_t)p;
 }
 
+float bme280_get_pressure_hPa(void)
+{
+    return bme280_get_pressure()/256;
+}
+
 // divide by 100 to get degrees celsius
 int32_t bme280_get_temperature(void)
 {
@@ -167,4 +177,8 @@ int32_t bme280_get_temperature(void)
     return T;
 }
 
+float bme280_get_temperature_c(void)
+{
+    return bme280_get_temperature()/100;
+}
 

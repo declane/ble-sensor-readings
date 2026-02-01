@@ -64,9 +64,15 @@ int32_t bme280_read_calibration_sync(void);
 
 int32_t bme280_get_humidity(void);
 
+int32_t bme280_get_humidity_relHum(void);
+
 int32_t bme280_get_pressure(void);
 
+float bme280_get_pressure_hPa(void);
+
 int32_t bme280_get_temperature(void);
+
+float bme280_get_temperature_c(void);
 
 
 #endif // BME_280_H
