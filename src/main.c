@@ -10,6 +10,7 @@
 
 #include "ble_manager.h"
 #include "gy_521.h"
+#include "bme_280.h"
 
 #include <uart_async_adapter.h>
 
@@ -471,6 +472,18 @@ void imu_read(void)
 {
 	int err = 0;
 	MPU_conf_t imu_config_params;
+	BmeConfig_s bme_config_params = 
+	{
+		.mode = BmeModeNormal,
+		.humiditySamplingSelection = BmeSampling_2,
+		.pressureSamplingSelection = BmeSampling_2,
+		.temperatureSamplingSelection = BmeSampling_2,
+		.standByTime = BmeStandByTime_10ms,
+		.filterCoefficient = BmeIIR_FilterOff
+	};
+
+	int32_t bme_temperature_c, bme_pressure_hPa;
+	int32_t relative_humidity;
 
 	imu_config_params.accel_setting = MPU6050_Accelerometer_8G;
 	imu_config_params.gyro_setting = MPU6050_Gyroscope_1000_deg;
@@ -481,6 +494,11 @@ void imu_read(void)
 		LOG_ERR("mpu6050_setup failed. returned: %d", err);
 	}
 
+	err = bme280_setup_device(&bme_config_params);
+	if(err){
+		LOG_ERR("BME280 failed to setup. returned: %d", err);
+	}
+
 	MPU6050_t imu_data;
 	imu_data.Accel_X_RAW = 0; imu_data.Accel_Y_RAW = 0; imu_data.Accel_Z_RAW = 0;
 	imu_data.Gyro_X_RAW = 0; imu_data.Gyro_Y_RAW = 0; imu_data.Gyro_Z_RAW = 0;
@@ -488,7 +506,7 @@ void imu_read(void)
 	size_t size;
 	struct uart_data_t* mem_ptr;
 
-	char imuAccelStr[75], imuGyroStr[75], imuBleData[40];
+	char imuAccelStr[75], imuGyroStr[75], bmeStr[75], imuBleData[40];
 	struct uart_data_t uartBuf = { 0 };
 	int bleDataSize;//, plen, loc;
 
@@ -504,19 +522,26 @@ void imu_read(void)
 		counter++;
 
 		MPU_read_all_data(&imu_data);
+		bme280_read_sensor_sync();
+		relative_humidity = bme280_get_humidity()/1024;
+		bme_temperature_c = bme280_get_temperature()/100; 
+		bme_pressure_hPa = bme280_get_pressure()/256;
+
 		if( (counter % 500) == 0)
 		{
 			counter = 0;
 
 			snprintf(imuAccelStr, 75, "Accel Measurements: Ax = %d | Ay = %d | Az = %d", imu_data.Accel_X_RAW, imu_data.Accel_Y_RAW, imu_data.Accel_Z_RAW);
 			snprintf(imuGyroStr, 75,  "Gyro  Measurements: Gx = %d | Gy = %d | Gz = %d", imu_data.Gyro_X_RAW, imu_data.Gyro_Y_RAW, imu_data.Gyro_Z_RAW);
-			bleDataSize = snprintf(imuBleData, 40, "%d,%d,%d\r\n", imu_data.Accel_X_RAW, imu_data.Accel_Y_RAW, imu_data.Accel_Z_RAW);
+			snprintf(bmeStr, 75, "BME: T = %d | P = %d | H = %d", bme_temperature_c, bme_pressure_hPa, relative_humidity);
+			bleDataSize = snprintf(imuBleData, 40, "%d,%d,%d\r\n", bme_temperature_c, bme_pressure_hPa, relative_humidity);
 
 			memcpy(uartBuf.data, imuBleData, bleDataSize);
 			uartBuf.len = bleDataSize;
 
 			LOG_INF("%s", imuAccelStr);
 			LOG_INF("%s", imuGyroStr);
+			LOG_INF("%s", bmeStr);
 			LOG_INF("Str sending over BLE: %s", uartBuf.data);
 
 			size = sizeof(uartBuf);

@@ -29,10 +29,6 @@ static const Sensor_IO_Descriptor_s sensor_descriptor =    {
 static int zephyr_i2c_config(void* config_data)
 {
     i2c_dev = i2c_spec.bus;
-    if(!device_is_ready(i2c_dev))
-    {
-        return SENSOR_IO_CONFIG_ERROR;
-    }
     config_data = (void*)i2c_dev;
     if (!config_data) 
     {

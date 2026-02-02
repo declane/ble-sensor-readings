@@ -244,7 +244,6 @@ int init_MPU6050(MPU_conf_t *config_param, gpio_callback_handler_t handler)
     int err;
     io_descriptor = get_mpu_descriptor();
     err = io_descriptor->config(io_descriptor->driver_handle);
-
     if (err == SENSOR_IO_CONFIG_ERROR) {
 		  printk("I2C: Device driver not found.\n");
 		  return -1;
@@ -253,7 +252,7 @@ int init_MPU6050(MPU_conf_t *config_param, gpio_callback_handler_t handler)
     //verify we have the correct address
     uint8_t reg_addr = WHO_AM_I_REG;
     uint8_t data_buf;
-
+    
     err = io_descriptor->read_byte(io_descriptor->driver_handle, MPU_I2C_ADDR, reg_addr, &data_buf);
     if (err)
     {
@@ -262,8 +261,6 @@ int init_MPU6050(MPU_conf_t *config_param, gpio_callback_handler_t handler)
         return -2;
     }
     LOG_INF("Who am I: 0x%x\n", data_buf);
-
-     
 
     //turn on sensor
     reg_addr = (uint8_t)PWR_MGMT_1_REG;
