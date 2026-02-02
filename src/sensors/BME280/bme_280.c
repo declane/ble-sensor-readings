@@ -26,7 +26,7 @@ int32_t bme280_setup_device(BmeConfig_s* config)
     {
         return 1;
     }
-    
+   
     // CHANGES TO HUMIDITY CONTROL (ctrl_hum) ONLY BECOME EFFECTIVE
     // AFTER A WRITE TO MEASURE CONTROL (ctrl_meas)
     uint8_t ctrl_humidity_reg = 0;
@@ -45,6 +45,13 @@ int32_t bme280_setup_device(BmeConfig_s* config)
     io_descriptor->write_byte(io_descriptor->driver_handle, BME280_I2C_ADDR_DEF, BME280_REG_CTRL_HUM, ctrl_humidity_reg);
     io_descriptor->write_byte(io_descriptor->driver_handle, BME280_I2C_ADDR_DEF, BME280_REG_CTRL_MEAS, ctrl_meas_reg);
     io_descriptor->write_byte(io_descriptor->driver_handle, BME280_I2C_ADDR_DEF, BME280_REG_CONFIG, config_reg);
+
+    // read calibration
+    err = bme280_read_calibration_sync();
+    if(err)
+    {
+        return 2;
+    }
 
     return 0;
 }
@@ -69,6 +76,12 @@ int32_t bme280_read_sensor_sync(void)
 
 int32_t bme280_read_calibration_sync(void)
 {
+    int16_t dig_h4_lsb;
+    int16_t dig_h4_msb;
+    int16_t dig_h5_lsb;
+    int16_t dig_h5_msb;
+
+    
     // read calibration into buffer.
     io_descriptor->read_array(  io_descriptor->driver_handle, 
                                 BME280_I2C_ADDR_DEF, 
@@ -78,33 +91,38 @@ int32_t bme280_read_calibration_sync(void)
 
     io_descriptor->read_array(  io_descriptor->driver_handle, 
                                 BME280_I2C_ADDR_DEF, 
-                                BME280_CAL_26_41_START_ADDR, 
+                                BME280_CAL_26_32_START_ADDR, 
                                 (raw_calibration_data + BME280_CAL_00_25_LENGTH), 
-                                BME280_CAL_26_41_LENGTH);
+                                BME280_CAL_26_32_LENGTH);
 
-    dig_T1 = (raw_calibration_data[0] << 8)  | raw_calibration_data[1];
-    dig_T2 = (raw_calibration_data[2] << 8)  | raw_calibration_data[3];
-    dig_T3 = (raw_calibration_data[4] << 8)  | raw_calibration_data[5];
+    dig_T1 = ((uint16_t)raw_calibration_data[1] << 8)  | (uint16_t)raw_calibration_data[0];
+    dig_T2 = (int16_t)((uint16_t)raw_calibration_data[3] << 8)  | (uint16_t)raw_calibration_data[2];
+    dig_T3 = (int16_t)((uint16_t)raw_calibration_data[5] << 8)  | (uint16_t)raw_calibration_data[4];
     
-    dig_P1 = (raw_calibration_data[6] << 8)  | raw_calibration_data[7];
-    dig_P2 = (raw_calibration_data[8] << 8)  | raw_calibration_data[9];
-    dig_P3 = (raw_calibration_data[10] << 8) | raw_calibration_data[11];
-    dig_P4 = (raw_calibration_data[12] << 8) | raw_calibration_data[13];
-    dig_P5 = (raw_calibration_data[14] << 8) | raw_calibration_data[15];
-    dig_P6 = (raw_calibration_data[16] << 8) | raw_calibration_data[17];
-    dig_P7 = (raw_calibration_data[18] << 8) | raw_calibration_data[19];
-    dig_P8 = (raw_calibration_data[20] << 8) | raw_calibration_data[21];
-    dig_P9 = (raw_calibration_data[22] << 8) | raw_calibration_data[23];
+    dig_P1 = ((uint16_t)raw_calibration_data[7] << 8)  | (uint16_t)raw_calibration_data[6];
+    dig_P2 = (int16_t)((uint16_t)raw_calibration_data[9] << 8)  | (uint16_t)raw_calibration_data[8];
+    dig_P3 = (int16_t)((uint16_t)raw_calibration_data[11] << 8) | (uint16_t)raw_calibration_data[10];
+    dig_P4 = (int16_t)((uint16_t)raw_calibration_data[13] << 8) | (uint16_t)raw_calibration_data[12];
+    dig_P5 = (int16_t)((uint16_t)raw_calibration_data[15] << 8) | (uint16_t)raw_calibration_data[14];
+    dig_P6 = (int16_t)((uint16_t)raw_calibration_data[17] << 8) | (uint16_t)raw_calibration_data[16];
+    dig_P7 = (int16_t)((uint16_t)raw_calibration_data[19] << 8) | (uint16_t)raw_calibration_data[18];
+    dig_P8 = (int16_t)((uint16_t)raw_calibration_data[21] << 8) | (uint16_t)raw_calibration_data[20];
+    dig_P9 = (int16_t)((uint16_t)raw_calibration_data[23] << 8) | (uint16_t)raw_calibration_data[22];
     
-    dig_H1 = raw_calibration_data[24];
-    dig_H2 = (raw_calibration_data[25] << 8) | raw_calibration_data[26];
-    dig_H3 = raw_calibration_data[27];
+    // seems to skip index 24 (0xA0)...
+    dig_H1 = raw_calibration_data[25];
+    dig_H2 = (int16_t)(raw_calibration_data[27] << 8) | raw_calibration_data[26];
+    dig_H3 = raw_calibration_data[28];
 
     // Double Check these...
-    dig_H4 = (raw_calibration_data[28] << 4) | (raw_calibration_data[29] & 0xF);
-    dig_H5 = ( ((raw_calibration_data[29] & 0xF0) >> 4) << 8) | (raw_calibration_data[30] & 0xF);
+    dig_h4_msb = (int16_t)(int8_t)raw_calibration_data[29] * 16;
+    dig_h4_lsb = (int16_t)(raw_calibration_data[30] & 0x0F);
+    dig_H4 = dig_h4_msb | dig_h4_lsb;
+    dig_h5_msb = (int16_t)(int8_t)raw_calibration_data[30] * 16;
+    dig_h5_lsb = (int16_t)(raw_calibration_data[31] >> 4);
+    dig_H5 = dig_h5_msb | dig_h5_lsb;
 
-    dig_H6 = raw_calibration_data[31];
+    dig_H6 = raw_calibration_data[32];
 
     return 0;
 }
