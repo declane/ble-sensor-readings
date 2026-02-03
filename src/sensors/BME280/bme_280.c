@@ -16,9 +16,16 @@ static int8_t   dig_H6;
 
 static int32_t t_fine;
 
+static BmeConfig_s* configParams;
+
+static uint32_t getTemperatureSamplingTime_us(void);
+static uint32_t getPressuringSamplingTime_us(void);
+static uint32_t getHumiditySamplingTime_us(void);
+
 int32_t bme280_setup_device(BmeConfig_s* config)
 {
     int err;
+    configParams = config;
     
     io_descriptor = get_bme_descriptor();
     err = io_descriptor->config(io_descriptor->driver_handle);
@@ -128,11 +135,11 @@ int32_t bme280_read_calibration_sync(void)
 }
 
 // divide return value by 1024 to get releative humidity (RH)
-int32_t bme280_get_humidity(void)
+uint32_t bme280_get_humidity(void)
 {
     int32_t v_x1_u32r, adc_H;
-    adc_H =   (int32_t)(raw_sensor_data[7]) |  // BME280_REG_PRESS_XLSB
-            ( (int32_t)(raw_sensor_data[6]) << 8);       // BME280_REG_PRESS_LSB
+    adc_H =   (int32_t)(raw_sensor_data[7]) |       // BME280_REG_PRESS_XLSB
+            ( (int32_t)(raw_sensor_data[6]) << 8);  // BME280_REG_HUM_MSB
     v_x1_u32r = (t_fine - ((int32_t)76800));
 
     v_x1_u32r = (((((adc_H << 14) - (((int32_t)dig_H4) << 20) - (((int32_t)dig_H5) * v_x1_u32r)) + ((int32_t)16384)) >> 15) * (((((((v_x1_u32r *
@@ -141,7 +148,7 @@ int32_t bme280_get_humidity(void)
     v_x1_u32r = (v_x1_u32r - (((((v_x1_u32r >> 15) * (v_x1_u32r >> 15)) >> 7) * ((int32_t)dig_H1)) >> 4));
     v_x1_u32r = (v_x1_u32r < 0 ? 0 : v_x1_u32r);
     v_x1_u32r = (v_x1_u32r > 419430400 ? 419430400 : v_x1_u32r);
-    return (int32_t)(v_x1_u32r>>12);
+    return (uint32_t)(v_x1_u32r>>12);
 }
 
 int32_t bme280_get_humidity_relHum(void)
@@ -200,3 +207,104 @@ float bme280_get_temperature_c(void)
     return bme280_get_temperature()/100;
 }
 
+uint32_t bme280_get_sample_time_us(void)
+{
+    uint32_t sampleTime = 0;
+    switch(configParams->standByTime)
+    {
+    case BmeStandByTime_0500us:
+        sampleTime = 500;
+        break;
+    case BmeStandByTime_62500us:
+        sampleTime = 62500;
+        break;
+    case BmeStandByTime_125ms:
+        sampleTime = 125000;
+        break;
+    case BmeStandByTime_250ms:
+        sampleTime = 250000;
+        break;
+    case BmeStandByTime_500ms:
+        sampleTime = 500000;
+        break;
+    case BmeStandByTime_1000ms:
+        sampleTime = 1000000;
+        break;
+    case BmeStandByTime_10ms:
+        sampleTime = 10000;
+        break;
+    case BmeStandByTime_20ms:
+        sampleTime = 20000;
+        break; 
+    default:
+        sampleTime = 0;
+    }
+    sampleTime += getTemperatureSamplingTime_us();
+    sampleTime += getPressuringSamplingTime_us();
+    sampleTime += getHumiditySamplingTime_us();
+    sampleTime += 1000;
+    return sampleTime;
+}
+
+static uint32_t getTemperatureSamplingTime_us(void)
+{
+    switch(configParams->temperatureSamplingSelection)
+    {
+    case BmeSampling_off:
+        return 0;
+    case BmeSampling_1:
+        return 2000;
+    case BmeSampling_2:
+        return 4000;
+    case BmeSampling_4:
+        return 8000;
+    case BmeSampling_8:
+        return 16000;
+    case BmeSampling_16:
+        return 32000;
+    default:
+        return 0;
+    }
+}
+
+static uint32_t getPressuringSamplingTime_us(void)
+{
+    switch(configParams->pressureSamplingSelection)
+    {
+    case BmeSampling_off:
+        return 0;
+    case BmeSampling_1:
+        return 2500;
+    case BmeSampling_2:
+        return 4500;
+    case BmeSampling_4:
+        return 8500;
+    case BmeSampling_8:
+        return 16500;
+    case BmeSampling_16:
+        return 32500;
+    default:
+        return 0;
+    }
+}
+
+static uint32_t getHumiditySamplingTime_us(void)
+{
+    switch(configParams->humiditySamplingSelection)
+    {
+    case BmeSampling_off:
+        return 0;
+    case BmeSampling_1:
+        return 2500;
+    case BmeSampling_2:
+        return 4500;
+    case BmeSampling_4:
+        return 8500;
+    case BmeSampling_8:
+        return 16500;
+    case BmeSampling_16:
+        return 32500;
+    default:
+        return 0;
+    }
+}
