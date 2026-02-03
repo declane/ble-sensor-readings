@@ -534,7 +534,7 @@ void imu_read(void)
 			snprintf(imuAccelStr, 75, "Accel Measurements: Ax = %d | Ay = %d | Az = %d", imu_data.Accel_X_RAW, imu_data.Accel_Y_RAW, imu_data.Accel_Z_RAW);
 			snprintf(imuGyroStr, 75,  "Gyro  Measurements: Gx = %d | Gy = %d | Gz = %d", imu_data.Gyro_X_RAW, imu_data.Gyro_Y_RAW, imu_data.Gyro_Z_RAW);
 			snprintf(bmeStr, 75, "BME: T = %d | P = %d | H = %d", bme_temperature_c, bme_pressure_hPa, relative_humidity);
-			bleDataSize = snprintf(imuBleData, 40, "%d,%d,%d\r\n", bme_temperature_c, bme_pressure_hPa, relative_humidity);
+			bleDataSize = snprintf(imuBleData, 40, "T=%dC, P=%dhPa, H%dRH\r\n", bme_temperature_c, bme_pressure_hPa, relative_humidity);
 
 			memcpy(uartBuf.data, imuBleData, bleDataSize);
 			uartBuf.len = bleDataSize;
