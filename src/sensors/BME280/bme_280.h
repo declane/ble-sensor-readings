@@ -3,6 +3,11 @@
 
 #include "stdint.h"
 
+#define BME280_RESULT_SUCCESS               0
+#define BME280_RESULT_IO_DRIVER_ERROR       1
+#define BME280_RESULT_INVALID_PARAMETER      2
+#define BME280_RESULT_MODULE_NOT_CONFIGURED 3
+
 /* 
 Burst reads of all the data is recommended for several reasons:
 1.  Fastest even if pressure for example is not being sampled.

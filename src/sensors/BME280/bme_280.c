@@ -3,6 +3,7 @@
 #include "../sensor_io/sensor_io.h"
 
 const static Sensor_IO_Descriptor_s* io_descriptor;
+static BmeConfig_s* configParams = 0;
 
 static uint8_t ctrl_meas_reg;
 static uint8_t raw_sensor_data[BME280_DATA_BYTE_COUNT] = {0};
@@ -16,8 +17,6 @@ static int8_t   dig_H6;
 
 static int32_t t_fine;
 
-static BmeConfig_s* configParams;
-
 static uint32_t getTemperatureSamplingTime_us(void);
 static uint32_t getPressuringSamplingTime_us(void);
 static uint32_t getHumiditySamplingTime_us(void);
@@ -25,13 +24,23 @@ static uint32_t getHumiditySamplingTime_us(void);
 int32_t bme280_setup_device(BmeConfig_s* config)
 {
     int err;
-    configParams = config;
+
+    // make sure values passed here are acceptable.
+    if( (config->filterCoefficient > BmeIIR_Filter_16) || (config->filterCoefficient < BmeIIR_FilterOff) ||
+        (config->mode > BmeModeNormal) || (config->mode < BmeModeSleep) ||
+        (config->humiditySamplingSelection > BmeSampling_16) || (config->humiditySamplingSelection < BmeSampling_off) ||
+        (config->temperatureSamplingSelection > BmeSampling_16) || (config->temperatureSamplingSelection < BmeSampling_off) ||
+        (config->pressureSamplingSelection > BmeSampling_16) || (config->pressureSamplingSelection < BmeSampling_off) ||
+        (config->standByTime > BmeStandByTime_20ms) || (config->standByTime < BmeStandByTime_0500us) )
+        {
+            return BME280_RESULT_INVALID_PARAMETER;
+        }
     
     io_descriptor = get_bme_descriptor();
     err = io_descriptor->config(io_descriptor->driver_handle);
     if(err == SENSOR_IO_CONFIG_ERROR)
     {
-        return 1;
+        return BME280_RESULT_IO_DRIVER_ERROR;
     }
    
     // CHANGES TO HUMIDITY CONTROL (ctrl_hum) ONLY BECOME EFFECTIVE
@@ -49,58 +58,115 @@ int32_t bme280_setup_device(BmeConfig_s* config)
                  (uint8_t)((uint8_t)config->standByTime << 5);
 
     // write bytes to designated registers.
-    io_descriptor->write_byte(io_descriptor->driver_handle, BME280_I2C_ADDR_DEF, BME280_REG_CTRL_HUM, ctrl_humidity_reg);
-    io_descriptor->write_byte(io_descriptor->driver_handle, BME280_I2C_ADDR_DEF, BME280_REG_CTRL_MEAS, ctrl_meas_reg);
-    io_descriptor->write_byte(io_descriptor->driver_handle, BME280_I2C_ADDR_DEF, BME280_REG_CONFIG, config_reg);
+    err = io_descriptor->write_byte(io_descriptor->driver_handle, BME280_I2C_ADDR_DEF, BME280_REG_CTRL_HUM, ctrl_humidity_reg);
+    if(err == SENSOR_IO_CONFIG_ERROR)
+    {
+        return BME280_RESULT_IO_DRIVER_ERROR;
+    }
+
+    err = io_descriptor->write_byte(io_descriptor->driver_handle, BME280_I2C_ADDR_DEF, BME280_REG_CTRL_MEAS, ctrl_meas_reg);
+    if(err == SENSOR_IO_CONFIG_ERROR)
+    {
+        return BME280_RESULT_IO_DRIVER_ERROR;
+    }
+
+    err = io_descriptor->write_byte(io_descriptor->driver_handle, BME280_I2C_ADDR_DEF, BME280_REG_CONFIG, config_reg);
+    if(err == SENSOR_IO_CONFIG_ERROR)
+    {
+        return BME280_RESULT_IO_DRIVER_ERROR;
+    }
 
     // read calibration
     err = bme280_read_calibration_sync();
     if(err)
     {
-        return 2;
+        return err;
     }
 
-    return 0;
+    configParams = config;
+
+    return BME280_RESULT_SUCCESS;
 }
 
 int32_t bme280_set_mode(BmeMode_e mode)
 {
+    if(!configParams)
+    {
+        return BME280_RESULT_MODULE_NOT_CONFIGURED;
+    }
+
+    if((mode > BmeModeNormal) || (mode < BmeModeSleep))
+    {
+        return BME280_RESULT_INVALID_PARAMETER;
+    }
+    
     ctrl_meas_reg &= 0xFC;
     ctrl_meas_reg |= (uint8_t)mode & 0x03;
     
     // write byte.
-    io_descriptor->write_byte(io_descriptor->driver_handle, BME280_I2C_ADDR_DEF, BME280_REG_CTRL_MEAS, ctrl_meas_reg);
+    int err = io_descriptor->write_byte(io_descriptor->driver_handle, BME280_I2C_ADDR_DEF, BME280_REG_CTRL_MEAS, ctrl_meas_reg);
+    if(err == SENSOR_IO_CONFIG_ERROR)
+    {
+        ctrl_meas_reg &= 0xFC;
+        ctrl_meas_reg |= (uint8_t)configParams->mode & 0x03;
+        return BME280_RESULT_IO_DRIVER_ERROR;
+    }
 
-    return 0;
+    configParams->mode = mode;
+    return BME280_RESULT_SUCCESS;
 }
 
 int32_t bme280_read_sensor_sync(void)
 {
+    if(!configParams)
+    {
+        return BME280_RESULT_MODULE_NOT_CONFIGURED;
+    }
+    
     // read bytes into buffer
-    io_descriptor->read_array(io_descriptor->driver_handle, BME280_I2C_ADDR_DEF, BME280_DATA_START_ADDR, raw_sensor_data, BME280_DATA_BYTE_COUNT);
-    return 0;
+    int err = io_descriptor->read_array(io_descriptor->driver_handle, BME280_I2C_ADDR_DEF, BME280_DATA_START_ADDR, raw_sensor_data, BME280_DATA_BYTE_COUNT);
+    if(err == SENSOR_IO_CONFIG_ERROR)
+    {
+        return BME280_RESULT_IO_DRIVER_ERROR;
+    }
+    
+    return BME280_RESULT_SUCCESS;
 }
 
 int32_t bme280_read_calibration_sync(void)
 {
+    int err;
     int16_t dig_h4_lsb;
     int16_t dig_h4_msb;
     int16_t dig_h5_lsb;
     int16_t dig_h5_msb;
 
+    if(!configParams)
+    {
+        return BME280_RESULT_MODULE_NOT_CONFIGURED;
+    }    
     
     // read calibration into buffer.
-    io_descriptor->read_array(  io_descriptor->driver_handle, 
-                                BME280_I2C_ADDR_DEF, 
-                                BME280_CAL_00_25_START_ADDR, 
-                                raw_calibration_data, 
-                                BME280_CAL_00_25_LENGTH);
+    err = io_descriptor->read_array(io_descriptor->driver_handle, 
+                                    BME280_I2C_ADDR_DEF, 
+                                    BME280_CAL_00_25_START_ADDR, 
+                                    raw_calibration_data, 
+                                    BME280_CAL_00_25_LENGTH);
+    if(err == SENSOR_IO_CONFIG_ERROR)
+    {
+        return BME280_RESULT_IO_DRIVER_ERROR;
+    }
+    
+    err = io_descriptor->read_array(io_descriptor->driver_handle, 
+                                    BME280_I2C_ADDR_DEF, 
+                                    BME280_CAL_26_32_START_ADDR, 
+                                    (raw_calibration_data + BME280_CAL_00_25_LENGTH), 
+                                    BME280_CAL_26_32_LENGTH);
+    if(err == SENSOR_IO_CONFIG_ERROR)
+    {
+        return BME280_RESULT_IO_DRIVER_ERROR;
+    }
 
-    io_descriptor->read_array(  io_descriptor->driver_handle, 
-                                BME280_I2C_ADDR_DEF, 
-                                BME280_CAL_26_32_START_ADDR, 
-                                (raw_calibration_data + BME280_CAL_00_25_LENGTH), 
-                                BME280_CAL_26_32_LENGTH);
 
     dig_T1 = ((uint16_t)raw_calibration_data[1] << 8)  | (uint16_t)raw_calibration_data[0];
     dig_T2 = (int16_t)((uint16_t)raw_calibration_data[3] << 8)  | (uint16_t)raw_calibration_data[2];
@@ -131,12 +197,16 @@ int32_t bme280_read_calibration_sync(void)
 
     dig_H6 = raw_calibration_data[32];
 
-    return 0;
+    return BME280_RESULT_SUCCESS;
 }
 
 // divide return value by 1024 to get releative humidity (RH)
 uint32_t bme280_get_humidity(void)
 {
+    if(!configParams)
+    {
+        return -1;
+    } 
     int32_t v_x1_u32r, adc_H;
     adc_H =   (int32_t)(raw_sensor_data[7]) |       // BME280_REG_PRESS_XLSB
             ( (int32_t)(raw_sensor_data[6]) << 8);  // BME280_REG_HUM_MSB
@@ -153,12 +223,21 @@ uint32_t bme280_get_humidity(void)
 
 int32_t bme280_get_humidity_relHum(void)
 {
+    if(!configParams)
+    {
+        return -1;
+    }
     return bme280_get_humidity()/1024;
 }
 
 // divide return value by 256 to get hPa
 int32_t bme280_get_pressure(void)
 {
+    if(!configParams)
+    {
+        return -1;
+    }
+    
     int32_t adc_P = ( (int32_t)(raw_sensor_data[2] & 0xF0) >> 4) |  // BME280_REG_PRESS_XLSB
                     ( (int32_t)(raw_sensor_data[1]) << 4) |         // BME280_REG_PRESS_LSB
                     ( (int32_t)(raw_sensor_data[0]) << 12);         // BME280_REG_PRESS_MSB;
@@ -185,12 +264,22 @@ int32_t bme280_get_pressure(void)
 
 float bme280_get_pressure_hPa(void)
 {
+    if(!configParams)
+    {
+        return -1;
+    }
+    
     return bme280_get_pressure()/256;
 }
 
 // divide by 100 to get degrees celsius
 int32_t bme280_get_temperature(void)
 {
+    if(!configParams)
+    {
+        return -1;
+    }
+    
     int32_t var1, var2, T, adc_T;
     adc_T = ( (int32_t)(raw_sensor_data[5] & 0xF0) >> 4) |  // BME280_REG_TEMP_XLSB
             ( (int32_t)(raw_sensor_data[4]) << 4) |         // BME280_REG_TEMP_LSB
@@ -204,11 +293,21 @@ int32_t bme280_get_temperature(void)
 
 float bme280_get_temperature_c(void)
 {
+    if(!configParams)
+    {
+        return -1;
+    }
+    
     return bme280_get_temperature()/100;
 }
 
 uint32_t bme280_get_sample_time_us(void)
 {
+    if(!configParams)
+    {
+        return 0;
+    }
+    
     uint32_t sampleTime = 0;
     switch(configParams->standByTime)
     {
