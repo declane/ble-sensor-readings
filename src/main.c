@@ -496,7 +496,7 @@ void imu_read(void)
 
 	err = bme280_setup_device(&bme_config_params);
 	if(err){
-		LOG_ERR("BME280 failed to setup. returned: %d", err);
+		printk("BME280 failed to setup. returned: %d\n", err);
 	}
 
 	MPU6050_t imu_data;
@@ -523,18 +523,18 @@ void imu_read(void)
 
 		MPU_read_all_data(&imu_data);
 		bme280_read_sensor_sync();
-		relative_humidity = bme280_get_humidity()/1024;
 		bme_temperature_c = bme280_get_temperature()/100; 
-		bme_pressure_hPa = bme280_get_pressure()/256;
+		relative_humidity = bme280_get_humidity()/1024;
+		bme_pressure_hPa = bme280_get_pressure()/10000;
 
-		if( (counter % 500) == 0)
+		if( (counter % 100) == 0)
 		{
 			counter = 0;
 
 			snprintf(imuAccelStr, 75, "Accel Measurements: Ax = %d | Ay = %d | Az = %d", imu_data.Accel_X_RAW, imu_data.Accel_Y_RAW, imu_data.Accel_Z_RAW);
 			snprintf(imuGyroStr, 75,  "Gyro  Measurements: Gx = %d | Gy = %d | Gz = %d", imu_data.Gyro_X_RAW, imu_data.Gyro_Y_RAW, imu_data.Gyro_Z_RAW);
 			snprintf(bmeStr, 75, "BME: T = %d | P = %d | H = %d", bme_temperature_c, bme_pressure_hPa, relative_humidity);
-			bleDataSize = snprintf(imuBleData, 40, "T=%dC, P=%dhPa, H%dRH\r\n", bme_temperature_c, bme_pressure_hPa, relative_humidity);
+			bleDataSize = snprintf(imuBleData, 40, "T=%dC, P=%dhPa, H=%dRH\r\n", bme_temperature_c, bme_pressure_hPa, relative_humidity);
 
 			memcpy(uartBuf.data, imuBleData, bleDataSize);
 			uartBuf.len = bleDataSize;
