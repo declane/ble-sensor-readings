@@ -1,15 +1,19 @@
 #include "gy_521.h"
+#include "sensor_io/sensor_io.h"
+#include <zephyr/logging/log.h>
+
+const static Sensor_IO_Descriptor_s* io_descriptor;
 
 #define LOG_MODULE_NAME IMU
 LOG_MODULE_REGISTER(LOG_MODULE_NAME);
 
 //SCL - 27  SDA - 26
-#define I2C_DEV DT_NODELABEL(imu_sensor)
+//#define I2C_DEV DT_NODELABEL(imu_sensor)
 #define GPIO_DEV DT_NODELABEL(imu_ready_pin)
 
 static const struct device *gpiob;
-static const struct device *i2c_dev;
-static const struct i2c_dt_spec i2c_spec = I2C_DT_SPEC_GET(I2C_DEV);
+//static const struct device *i2c_dev;
+//static const struct i2c_dt_spec i2c_spec = I2C_DT_SPEC_GET(I2C_DEV);
 static struct gpio_callback gpio_cb;
 static const struct gpio_dt_spec gpio_spec = GPIO_DT_SPEC_GET(GPIO_DEV, gpios);
 
@@ -109,7 +113,7 @@ int interrupt_MPU6050_en(gpio_callback_handler_t handler)
     int err;
     uint8_t reg_addr = INT_PIN_CFG_REG;
     uint8_t data_buf = 0x30;
-    err = i2c_reg_write_byte(i2c_dev, MPU_I2C_ADDR, reg_addr, data_buf);
+    err = io_descriptor->write_byte(io_descriptor->driver_handle, MPU_I2C_ADDR, reg_addr, data_buf);
 	if(err)
 	{
 		return err;
@@ -117,7 +121,7 @@ int interrupt_MPU6050_en(gpio_callback_handler_t handler)
 
     reg_addr = INT_ENABLE_REG;
     data_buf = IRQ_ENABLE;
-    err = i2c_reg_write_byte(i2c_dev, MPU_I2C_ADDR, reg_addr, data_buf);
+    err = io_descriptor->write_byte(io_descriptor->driver_handle, MPU_I2C_ADDR, reg_addr, data_buf);
 	if(err)
 	{
 		return err;
@@ -125,7 +129,7 @@ int interrupt_MPU6050_en(gpio_callback_handler_t handler)
 
 	// Read status to clear
 	reg_addr = INT_STATUS_REG;
-	err = i2c_reg_read_byte(i2c_dev, MPU_I2C_ADDR, reg_addr, &data_buf);
+  err = io_descriptor->read_byte(io_descriptor->driver_handle, MPU_I2C_ADDR, reg_addr, &data_buf);
 
   gpiob = gpio_spec.port;
 
@@ -146,8 +150,8 @@ int interrupt_MPU6050_dis()
 {
 	int err;
 	uint8_t reg_addr = INT_ENABLE_REG;
-    uint8_t data_buf = IRQ_DISABLE;
-	err = i2c_reg_write_byte(i2c_dev, MPU_I2C_ADDR, reg_addr, data_buf);
+  uint8_t data_buf = IRQ_DISABLE;
+  err = io_descriptor->write_byte(io_descriptor->driver_handle, MPU_I2C_ADDR, reg_addr, data_buf);
 
 	return err;
 }
@@ -159,10 +163,9 @@ int MPU_read_all_data(MPU6050_t* data_buf)
     uint16_t temperature;
     int err = 0;
     uint8_t write_data = ACCEL_XOUT_H_REG;
-    uint8_t* write_ptr = &write_data;
     
-    uint8_t temp_data[14];
-    err = i2c_write_read(i2c_dev, (uint8_t)MPU_I2C_ADDR, write_ptr, 1, temp_data, 14);
+    uint8_t temp_data[14] = {0};
+    err = io_descriptor->read_array(io_descriptor->driver_handle, MPU_I2C_ADDR, write_data, temp_data, 14);
     if(err)
     {
         LOG_ERR("Failed to read data. (err %i)\n", err);
@@ -189,7 +192,6 @@ int MPU_read_all_data(MPU6050_t* data_buf)
     data_buf->Gz = data_buf->Gyro_Z_RAW/curr_conv.gyro_sensitivity;
     
     return err;
-    
 }
 
 int config_MPU6050(MPU_conf_t *config_param)
@@ -201,7 +203,8 @@ int config_MPU6050(MPU_conf_t *config_param)
     //Setting sample rate:
     reg_addr = (uint8_t)SMPLRT_DIV_REG;
     config_byte = (uint8_t)config_param->sampling_rate;
-    err = i2c_reg_write_byte(i2c_dev, MPU_I2C_ADDR, reg_addr, config_byte);
+
+    err = io_descriptor->write_byte(io_descriptor->driver_handle, MPU_I2C_ADDR, reg_addr, config_byte);
     if(err)
     {
         LOG_ERR("Failed to Set Sampling Rate. (err %i)\n", err);
@@ -210,7 +213,8 @@ int config_MPU6050(MPU_conf_t *config_param)
     //Setting accel:
     reg_addr = (uint8_t)ACCEL_CONFIG_REG;
     config_byte = accel_sensitiviy_config((uint8_t)config_param->accel_setting);
-    err = i2c_reg_write_byte(i2c_dev, MPU_I2C_ADDR, reg_addr, config_byte);
+
+    err = io_descriptor->write_byte(io_descriptor->driver_handle, MPU_I2C_ADDR, reg_addr, config_byte);
     if(err)
     {
         LOG_ERR("Failed to set Accel. (err %i)\n", err);
@@ -219,7 +223,8 @@ int config_MPU6050(MPU_conf_t *config_param)
     //Setting gyro:
     reg_addr = (uint8_t)GYRO_CONFIG_REG;
     config_byte = gyro_sensitiviy_config((uint8_t)config_param->gyro_setting);
-    err = i2c_reg_write_byte(i2c_dev, MPU_I2C_ADDR, reg_addr, config_byte);
+
+    err = io_descriptor->write_byte(io_descriptor->driver_handle, MPU_I2C_ADDR, reg_addr, config_byte);
     if(err)
     {
         LOG_ERR("Failed to set Gyro. (err %i)\n", err);
@@ -237,20 +242,22 @@ int init_MPU6050(MPU_conf_t *config_param, gpio_callback_handler_t handler)
   printk("Starting zephyr sync mpu init.\n");  
   //Setup zephyr I2C driver
     int err;
-    i2c_dev = i2c_spec.bus;
-    if (!i2c_dev) {
+    io_descriptor = get_mpu_descriptor();
+    err = io_descriptor->config(io_descriptor->driver_handle);
+    if (err == SENSOR_IO_CONFIG_ERROR) {
 		  printk("I2C: Device driver not found.\n");
 		  return -1;
     }
-
+    
     //verify we have the correct address
     uint8_t reg_addr = WHO_AM_I_REG;
     uint8_t data_buf;
-    err = i2c_reg_read_byte(i2c_dev, MPU_I2C_ADDR, reg_addr,
-                                &data_buf);
+    
+    err = io_descriptor->read_byte(io_descriptor->driver_handle, MPU_I2C_ADDR, reg_addr, &data_buf);
     if (err)
     {
         LOG_ERR("Unable get WAI data. (err %i)\n", err);
+        printk("Failed to read WAI byte.\n"); 
         return -2;
     }
     LOG_INF("Who am I: 0x%x\n", data_buf);
@@ -258,7 +265,7 @@ int init_MPU6050(MPU_conf_t *config_param, gpio_callback_handler_t handler)
     //turn on sensor
     reg_addr = (uint8_t)PWR_MGMT_1_REG;
     data_buf = 0;
-    err = i2c_reg_write_byte(i2c_dev, MPU_I2C_ADDR, reg_addr, data_buf);
+    err = io_descriptor->write_byte(io_descriptor->driver_handle, MPU_I2C_ADDR, reg_addr, data_buf);
     if(err)
     {
         LOG_ERR("Failed to write to MPU. (err %i)\n", err);

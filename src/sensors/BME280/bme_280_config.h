@@ -34,7 +34,7 @@ SDO = VDD -> Address = 0x76
 
 
 // Default I2C Address
-#define BME280_I2C_ADDR_DEF       0x77
+#define BME280_I2C_ADDR_DEF       0x76
 #define BME280_I2C_ADDR_ALT       0x76
 
 // --- Calibration Data Registers (Read-only) ---
@@ -61,5 +61,14 @@ SDO = VDD -> Address = 0x76
 #define BME280_REG_TEMP_XLSB      0xFC // Temperature XLSB
 #define BME280_REG_HUM_MSB        0xFD // Humidity MSB
 #define BME280_REG_HUM_LSB        0xFE // Humidity LSB
+
+#define BME280_DATA_START_ADDR    BME280_REG_PRESS_MSB
+#define BME280_DATA_BYTE_COUNT    8 //(BME280_REG_HUM_LSB - BME280_REG_PRESS_MSB)
+
+#define BME280_CAL_00_25_START_ADDR 0x88
+#define BME280_CAL_00_25_LENGTH     26
+#define BME280_CAL_26_32_START_ADDR 0xE1
+#define BME280_CAL_26_32_LENGTH     7
+#define BME280_CAL_FULL_LENGTH      (BME280_CAL_00_25_LENGTH + BME280_CAL_26_32_LENGTH)
 
 #endif // BME_280_CONFIG_H

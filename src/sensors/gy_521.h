@@ -16,8 +16,8 @@
 #ifndef GY_521_H_
 #define GY_521_H_
 
-#include <zephyr/logging/log.h>
-#include <zephyr/drivers/i2c.h>
+//#include <zephyr/logging/log.h>
+//#include <zephyr/drivers/i2c.h>
 #include <zephyr/drivers/gpio.h>
 
 
