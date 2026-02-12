@@ -22,6 +22,11 @@ typedef struct {
     uint8_t ck_b;           // end of checksum.
 } Ubx_Packet_s;
 
+
+Ubx_Packet_s* ubx_get_rx_pkt();
+
+void ubx_bytes_recieved(uint8_t* rxData, uint16_t rxLen);
+
 int ubx_proto_send_pkt(Ubx_Packet_s* txPkt);
 
 #endif // UBX_PROTO_H
