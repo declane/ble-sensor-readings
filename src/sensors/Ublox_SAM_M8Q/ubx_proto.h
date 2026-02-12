@@ -11,6 +11,10 @@
 
 #define MAX_EXPECTED_PAYLOAD    92
 
+
+#define UBX_SYNC1_CHAR          0xB5
+#define UBX_SYNC2_CHAR          0x62
+
 typedef struct {
     uint8_t syncChar_1;     // 0xB5
     uint8_t syncChar_2;     // 0x62
@@ -22,6 +26,21 @@ typedef struct {
     uint8_t ck_b;           // end of checksum.
 } Ubx_Packet_s;
 
+typedef enum {
+    Parsing_Idle,
+    Parsing_Active,
+    Parsing_Complete,
+    Parsing_Timeout,
+    Parsing_Checksum_Error,
+    Parsing_Length_Limit
+} ParsingStatus_e;
+
 int ubx_proto_send_pkt(Ubx_Packet_s* txPkt);
+
+ParsingStatus_e ubx_get_parsing_status(void);
+
+Ubx_Packet_s* ubx_get_rx_pkt(void);
+
+void ubx_bytes_recieved(uint8_t* rxData, uint16_t rxLen);
 
 #endif // UBX_PROTO_H

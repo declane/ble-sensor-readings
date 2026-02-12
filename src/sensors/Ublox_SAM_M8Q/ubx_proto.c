@@ -1,13 +1,13 @@
 #include "ubx_proto.h"
 #include <string.h>
 
+static ParsingStatus_e parsingStatus = Parsing_Idle;
 static uint8_t txBuffer[MAX_EXPECTED_PAYLOAD + 8];
 static uint8_t rxBuffer[MAX_EXPECTED_PAYLOAD + 8];
 static uint8_t rxIndex = 0;
 
 static Ubx_Packet_s rxPkt;
 
-static void ubx_bytes_recieved(uint8_t* rxData, uint16_t rxLen);
 static int ubx_verify_checksum(Ubx_Packet_s* pkt);
 static int ubx_get_checksum(Ubx_Packet_s* pkt);
 static int flush_arr(uint8_t* arrPtr, uint16_t arrLen);
@@ -48,12 +48,13 @@ static int ubx_verify_checksum(Ubx_Packet_s* pkt)
     }
 }
 
-static void ubx_bytes_recieved(uint8_t* rxData, uint16_t rxLen)
+void ubx_bytes_recieved(uint8_t* rxData, uint16_t rxLen)
 {
+    uint16_t tempLen, i;
     if( (rxLen + rxIndex) > (MAX_EXPECTED_PAYLOAD + 8) )
     {
         // not enough space in our recieve buffer... what to do?
-        flush_arr(rxBuffer, (rxIndex+1) );
+        flush_arr(rxBuffer, rxIndex);
         return;
     }
 
@@ -61,27 +62,87 @@ static void ubx_bytes_recieved(uint8_t* rxData, uint16_t rxLen)
     {
         memcpy((rxBuffer+rxIndex), rxData, rxLen );
     }
-    else
+    else if(rxLen == 1)
     {
         rxBuffer[rxIndex] = *rxData;
     }
+    else
+    {
+        return;
+    }
+    rxIndex += rxLen;
 
     // we can check for packet preamble
     if(rxIndex > 2)
     {
-        // preamble
-        if( (rxBuffer[0] == 0xB5) && (rxBuffer[1] == 0x62) )
+        // search for preamble
+        for(i = 0; i < (rxIndex-1); i++)
         {
-            // can check length
-            if(rxIndex > 6)
+            if(rxBuffer[i] == UBX_SYNC1_CHAR)
             {
-                
+                if(rxBuffer[i+1] == UBX_SYNC2_CHAR)
+                {
+                    break;
+                }
             }
+        }
+
+        if(!i)
+        {
+            // Ideal case where preamble is at start.
+            parsingStatus = Parsing_Active;
+        }
+        else if(i < (rxIndex-1) )
+        {
+            // found preamble not at start...
+            // how do we shift everything down?
+            memset(rxBuffer, 0, i);
+            memcpy(rxBuffer, (rxBuffer+i), rxIndex-i);
+            rxIndex -= i;
+            parsingStatus = Parsing_Active;
         }
         else
         {
-            // do we search for preamble?
+            flush_arr(rxBuffer, rxIndex);
+            rxIndex = 0;
+            parsingStatus = Parsing_Idle;
+            return;
         }
+
+        // we can get payload length
+        if(rxIndex > 6)
+        {
+            tempLen = (uint16_t)rxBuffer[4] | ((uint16_t)rxBuffer[5] << 8); 
+            if(tempLen > MAX_EXPECTED_PAYLOAD)
+            {
+                /**
+                 * Might not be necessary. In the past if there is in error in 
+                 * parsing or the packet recieved, the length might become some very
+                 * large, unexpected number that does not match the packet size. 
+                 * Trying to avoid that here.
+                 */
+                parsingStatus = Parsing_Length_Limit;
+                return;
+            }
+
+            if(rxIndex >= tempLen + 8)
+            {
+                // whole packet came in. Yay
+                memcpy((uint8_t*)&rxPkt, rxBuffer, rxIndex);
+                rxPkt.ck_a = rxBuffer[rxIndex-2];
+                rxPkt.ck_b = rxBuffer[rxIndex-1];
+
+                if(ubx_verify_checksum(&rxPkt))
+                {
+                    parsingStatus = Parsing_Complete;
+                }
+                else
+                {
+                    parsingStatus = Parsing_Checksum_Error;
+                }
+            }
+        }
+        
     }
 }
 
@@ -106,9 +167,6 @@ static int ubx_get_checksum(Ubx_Packet_s* pkt, uint8_t* ck_a, uint8_t* ck_b)
 
 static int flush_arr(uint8_t* arrPtr, uint16_t arrLen)
 {
-    while(arrPtr != (arrPtr + arrLen) )
-    {
-        *arrPtr = 0;
-        arrPtr++;
-    }
+    memset(arrPtr, 0, arrLen);
+
 }
