@@ -14,11 +14,6 @@ static int ubx_get_checksum(Ubx_Packet_s* pkt, uint8_t* ck_a, uint8_t* ck_b);
 static int flush_arr(uint8_t* arrPtr, uint16_t arrLen);
 static uint16_t get_length_from_arr(uint8_t* arrPtr);
 
-Ubx_Packet_s* ubx_get_rx_pkt()
-{
-    return &rxPkt;
-}
-
 int ubx_proto_send_pkt(Ubx_Packet_s* txPkt)
 {
     uint8_t ck_a, ck_b;
