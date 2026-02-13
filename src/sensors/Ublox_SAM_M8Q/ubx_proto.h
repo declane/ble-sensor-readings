@@ -41,6 +41,6 @@ ParsingStatus_e ubx_get_parsing_status(void);
 
 Ubx_Packet_s* ubx_get_rx_pkt(void);
 
-void ubx_bytes_recieved(uint8_t* rxData, uint16_t rxLen);
+void ubx_bytes_recieved(const uint8_t* rxData, uint16_t rxLen);
 
 #endif // UBX_PROTO_H
