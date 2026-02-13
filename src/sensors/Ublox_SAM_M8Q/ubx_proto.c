@@ -4,7 +4,7 @@
 
 static ParsingStatus_e parsingStatus = Parsing_Idle;
 static uint8_t txBuffer[MAX_EXPECTED_PAYLOAD + 8];
-static uint8_t rxBuffer[MAX_EXPECTED_PAYLOAD + 8];
+static uint8_t rxBuffer[MAX_EXPECTED_PAYLOAD*2 + 8*2];
 static uint16_t rxIndex = 0;
 
 static Ubx_Packet_s rxPkt;
@@ -66,7 +66,8 @@ Ubx_Packet_s* ubx_get_rx_pkt(void)
 void ubx_bytes_recieved(const uint8_t* rxData, uint16_t rxLen)
 {
     uint16_t tempLen, i;
-    if( (rxLen + rxIndex) > (MAX_EXPECTED_PAYLOAD + 8) )
+
+    if( (rxLen + rxIndex) > (MAX_EXPECTED_PAYLOAD*2 + 8*2) )
     {
         // not enough space in our recieve buffer... what to do?
         flush_arr(rxBuffer, rxIndex);
@@ -158,14 +159,23 @@ void ubx_bytes_recieved(const uint8_t* rxData, uint16_t rxLen)
                 if(ubx_verify_checksum(&rxPkt))
                 {
                     parsingStatus = Parsing_Complete;
+                    flush_arr(rxBuffer, rxIndex);
+                    rxIndex = 0;
                 }
                 else
                 {
                     parsingStatus = Parsing_Checksum_Error;
+                    flush_arr(rxBuffer, rxIndex);
+                    rxIndex = 0;
                 }
-            }
-        }
-        
+            }// enogh bytes for whole packet
+        } // enough bytes for length
+    } // enough bytes for preamble
+    else
+    {
+        // a single byte has arrived... can't say if it is a packet
+        // or not but possible.
+        parsingStatus = Parsing_Active;
     }
 }
 
