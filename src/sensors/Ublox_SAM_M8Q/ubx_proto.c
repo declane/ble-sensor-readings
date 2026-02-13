@@ -12,6 +12,12 @@ static Ubx_Packet_s rxPkt;
 static int ubx_verify_checksum(Ubx_Packet_s* pkt);
 static int ubx_get_checksum(Ubx_Packet_s* pkt, uint8_t* ck_a, uint8_t* ck_b);
 static int flush_arr(uint8_t* arrPtr, uint16_t arrLen);
+static uint16_t get_length_from_arr(uint8_t* arrPtr);
+
+Ubx_Packet_s* ubx_get_rx_pkt()
+{
+    return &rxPkt;
+}
 
 int ubx_proto_send_pkt(Ubx_Packet_s* txPkt)
 {
@@ -23,7 +29,7 @@ int ubx_proto_send_pkt(Ubx_Packet_s* txPkt)
         return 1;
     }
 
-    memcpy(txBuffer, (uint8_t*)(&txPkt), (txPkt->payloadLen + 6) );
+    memcpy(txBuffer, (uint8_t*)(txPkt), (txPkt->payloadLen + 6) );
 
     ubx_get_checksum(txPkt, &ck_a, &ck_b);
 
@@ -190,5 +196,4 @@ static int ubx_get_checksum(Ubx_Packet_s* pkt, uint8_t* ck_a, uint8_t* ck_b)
 static int flush_arr(uint8_t* arrPtr, uint16_t arrLen)
 {
     memset(arrPtr, 0, arrLen);
-
 }
