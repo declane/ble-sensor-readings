@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include "../ubx_proto.h"
+#include "../ublox_gps.h"
 
 #define UBX_LOCAL_UNIT_TESTING
 
@@ -205,7 +206,7 @@ const unsigned char ubx_nav_pvt_junk_in_front[] = {
 //#define FULL_MESSAGE_TEST
 //#define HALF_MESSAGE_TEST
 //#define BYTE_BY_BYTE_MESSAGE_TEST
-
+//#define GPS_PARSEER_TEST
 
 const uint16_t ubx_nav_pvt_len = sizeof(ubx_nav_pvt);
 const uint16_t junk_in_front_len = sizeof(ubx_nav_pvt_junk_in_front);
@@ -217,6 +218,7 @@ static int assert_data_correct(Ubx_Packet_s* pkt);
 int main(void)
 {
     ParsingStatus_e parsingStatus;
+    GpsData_s* gpsData;
 
 #ifdef FULL_MESSAGE_TEST
     /** ***************************************************
@@ -330,6 +332,17 @@ int main(void)
     }
 
     printf(" ******************* Byte by Byte Message Test End *******************\n");
+#endif
+
+#ifdef GPS_PARSEER_TEST
+    printf(" ******************* NAV-PVT Parser Test Start *******************\n");
+    ublox_gps_set_rx_pkt_callback();
+    ubx_bytes_recieved(ubx_nav_pvt, ubx_nav_pvt_len);
+    gpsData = ublox_gps_get_gps_data();
+    printf("Day: %d - Month: %d - Year %d\n", gpsData->day, gpsData->month, gpsData->year);
+    printf("Longitude: %d\n", gpsData->longitutude_e7deg);
+    printf("Latitude: %d\n", gpsData->latitude_e7deg);
+    printf(" ******************* NAV-PVT Parser Test End *******************\n");
 #endif
 
     return 0;

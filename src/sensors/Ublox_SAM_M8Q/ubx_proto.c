@@ -14,6 +14,13 @@ static int ubx_get_checksum(Ubx_Packet_s* pkt, uint8_t* ck_a, uint8_t* ck_b);
 static int flush_arr(uint8_t* arrPtr, uint16_t arrLen);
 static uint16_t get_length_from_arr(uint8_t* arrPtr);
 
+static UbxRxPacketAvailableCallback_t rxPktAvailableCallback = 0;
+
+void ubx_set_rx_pkt_cb(UbxRxPacketAvailableCallback_t rxCb)
+{
+    rxPktAvailableCallback = rxCb;
+}
+
 int ubx_proto_send_pkt(Ubx_Packet_s* txPkt)
 {
     uint8_t ck_a, ck_b;
@@ -161,6 +168,10 @@ void ubx_bytes_recieved(const uint8_t* rxData, uint16_t rxLen)
                     parsingStatus = Parsing_Complete;
                     flush_arr(rxBuffer, rxIndex);
                     rxIndex = 0;
+                    if(rxPktAvailableCallback)
+                    {
+                        (*rxPktAvailableCallback)(&rxPkt);
+                    }
                 }
                 else
                 {

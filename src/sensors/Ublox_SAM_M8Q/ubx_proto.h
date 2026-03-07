@@ -35,6 +35,10 @@ typedef enum {
     Parsing_Length_Limit
 } ParsingStatus_e;
 
+typedef void (*UbxRxPacketAvailableCallback_t)(Ubx_Packet_s*);
+
+void ubx_set_rx_pkt_cb(UbxRxPacketAvailableCallback_t rxCb);
+
 int ubx_proto_send_pkt(Ubx_Packet_s* txPkt);
 
 ParsingStatus_e ubx_get_parsing_status(void);
